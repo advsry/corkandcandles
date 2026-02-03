@@ -1,151 +1,113 @@
-# Bookeo → Excel Sync (Cork and Candles)
+# Cork & Candles – Bookeo Bookings Azure Database
 
-This application fetches booking data from the [Bookeo API](https://www.bookeo.com/apiref/#tag/Bookings) and writes it to an Excel spreadsheet. It is designed to run on an **Azure Virtual Machine** and can be scheduled to run periodically.
+Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database for each month starting January 1, 2026.
 
-## Features
+## Prerequisites
 
-- **Historical data**: Fetches all bookings starting **January 1, 2026**
-- **Future data**: Fetches all bookings **90 days** into the future from today
-- **Excel output**: Single `.xlsx` file with columns for booking #, times, customer, product, price, canceled status, etc.
-- **Canceled bookings**: Included by default (configurable)
-- **API limits**: Automatically uses 31-day chunks and pagination (Bookeo allows max 31 days per call, 100 items per page)
+- [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) (for deployment)
+- Python 3.10+
+- [ODBC Driver 18 for SQL Server](https://docs.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) (for pyodbc)
+- Bookeo API key and secret (from your Bookeo account)
 
-## Requirements
+## Quick Start
 
-- Python 3.10+ (or 3.9+)
-- Azure VM (Linux or Windows) or any machine with Python
-
-## Installation on Azure VM
-
-### 1. Create an Azure VM
-
-- Create an Ubuntu 22.04 LTS or Windows Server VM in Azure.
-- SSH or RDP into the VM.
-
-### 2. Install Python (if not present)
-
-**Linux (Ubuntu):**
+### 1. Deploy Azure infrastructure
 
 ```bash
-sudo apt update
-sudo apt install -y python3 python3-pip python3-venv
+# Copy env template
+cp .env.example .env
+
+# Edit .env with your Bookeo API keys (optional – script has defaults for testing)
+
+# Deploy Azure SQL
+./scripts/deploy_azure.sh
 ```
 
-**Windows:** Install Python from [python.org](https://www.python.org/downloads/) or use the Microsoft Store.
+Follow prompts to create the resource group, SQL server, and database. The script will output connection values for `.env`.
 
-### 3. Deploy the application
+### 2. Configure environment
 
-Copy this project to the VM (e.g. `C:\bookeo-sync` on Windows or `/opt/bookeo-sync` on Linux), or clone:
+Add the Azure SQL connection details to `.env`:
 
-```bash
-git clone <your-repo-url> /opt/bookeo-sync
-cd /opt/bookeo-sync
+```env
+AZURE_SQL_SERVER=your-server.database.windows.net
+AZURE_SQL_DATABASE=corkandcandles-bookings
+AZURE_SQL_USER=sqladmin
+AZURE_SQL_PASSWORD=your_password
+
+BOOKEO_API_KEY=your_api_key
+BOOKEO_SECRET_KEY=your_secret_key
 ```
 
-### 4. Create virtual environment and install dependencies
+### 3. Install Python dependencies
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate   # Linux/macOS
-# or: venv\Scripts\activate   # Windows
-
 pip install -r requirements.txt
 ```
 
-### 5. Configure credentials
-
-The repo includes a `config.json` with your Bookeo credentials. For production:
-
-- **Option A**: Keep `config.json` (already in `.gitignore`). Ensure the file is only readable by the app user.
-- **Option B**: Use environment variables and do not store secrets in files:
-
-  - `BOOKEO_API_KEY`
-  - `BOOKEO_SECRET_KEY`
-  - Optional: `BOOKEO_HISTORICAL_START`, `BOOKEO_FUTURE_DAYS`, `BOOKEO_OUTPUT_FILE`
-
-Example (Linux):
+### 4. Load bookings
 
 ```bash
-export BOOKEO_API_KEY="your-api-key"
-export BOOKEO_SECRET_KEY="your-secret-key"
+# Fetch all months starting Jan 2026 (default 24 months) and load to Azure SQL
+python scripts/load_bookeo_bookings.py --months 24
 ```
 
-### 6. Run the sync
+## Script options
+
+| Option        | Description                                                       |
+|---------------|-------------------------------------------------------------------|
+| `--months N`  | Number of months to fetch (default: 24)                           |
+| `--fetch-only`| Only call the Bookeo API, do not write to the database           |
+| `--output FILE` | Save API response as JSON instead of loading to database       |
+
+## Manual deployment
+
+If you prefer not to use the deploy script:
 
 ```bash
-python sync_bookeo_to_excel.py
+# Create resource group
+az group create --name corkandcandles-rg --location eastus
+
+# Deploy Bicep (will prompt for sqlAdminPassword)
+az deployment group create \
+  --resource-group corkandcandles-rg \
+  --template-file azure/main.bicep \
+  --parameters baseName=corkandcandles sqlAdminLogin=sqladmin
+
+# Run schema
+sqlcmd -S corkandcandles-sqlserver.database.windows.net -d corkandcandles-bookings \
+  -U sqladmin -P <password> -i sql/schema.sql
 ```
 
-Output file: `bookeo_bookings.xlsx` (or path set in config).
-
-Optional:
-
-- `--config path/to/config.json` — custom config file
-- `--output path/to/output.xlsx` — override output path
-- `--dry-run` — fetch and log count only; do not write Excel
-
-## Scheduling (run automatically)
-
-### Linux (cron)
-
-Run every day at 6:00 AM:
-
-```bash
-crontab -e
-```
-
-Add (adjust paths to your install):
+## Project structure
 
 ```
-0 6 * * * /opt/bookeo-sync/venv/bin/python /opt/bookeo-sync/sync_bookeo_to_excel.py >> /opt/bookeo-sync/sync.log 2>&1
+├── azure/
+│   └── main.bicep          # Azure SQL Server + Database
+├── sql/
+│   └── schema.sql          # Bookings table schema
+├── scripts/
+│   ├── deploy_azure.sh     # One-click deploy
+│   └── load_bookeo_bookings.py  # Fetch + load script
+├── .env.example
+├── requirements.txt
+└── README.md
 ```
 
-### Windows (Task Scheduler)
+## Database schema
 
-1. Open **Task Scheduler**.
-2. Create Basic Task → name e.g. "Bookeo Excel Sync".
-3. Trigger: Daily at 6:00 AM (or your preferred time).
-4. Action: Start a program
-   - Program: `C:\bookeo-sync\venv\Scripts\python.exe`
-   - Arguments: `C:\bookeo-sync\sync_bookeo_to_excel.py`
-   - Start in: `C:\bookeo-sync`
-5. Finish and test by right-click → Run.
+The `Bookings` table stores:
 
-## Configuration
+- Core fields: `booking_number`, `event_id`, `start_time`, `end_time`, `customer_id`, `title`
+- Product: `product_name`, `product_id`
+- Status: `canceled`, `accepted`, `no_show`, `private_event`
+- Metadata: `creation_time`, `last_change_time`, `source_ip`
+- Pricing: `total_gross`, `total_net`, `total_paid`, `currency`
+- Raw JSON for full API response
 
-| Key                | Description                                            | Default                             |
-| ------------------ | ------------------------------------------------------ | ----------------------------------- |
-| `api_key`          | Bookeo API key                                         | (required)                          |
-| `secret_key`       | Bookeo secret key                                      | (required)                          |
-| `webhook_url`      | Webhook URL (for reference; webhook setup is separate) | https://corkandcandles.com/webhooks |
-| `auth_api_id`      | Auth API ID (for reference)                            | —                                   |
-| `historical_start` | Start of booking range (ISO datetime)                  | 2026-01-01T00:00:00Z                |
-| `future_days`      | Days from today to include                             | 90                                  |
-| `output_file`      | Path to output Excel file                              | bookeo_bookings.xlsx                |
-| `include_canceled` | Include canceled bookings                              | true                                |
+## Security notes
 
-## Excel columns
-
-The spreadsheet includes: Booking #, Start/End Time, Title, Product, Customer ID/Name/Email/Phone, Canceled status, Creation/Last change times and agents, Total Gross/Net/Paid, Currency, External Ref, Source, No Show, Resources, Options.
-
-## Webhook URL
-
-Your webhook URL (`https://corkandcandles.com/webhooks`) is stored in config for reference. To receive real-time booking events from Bookeo, you must register the webhook in the Bookeo API (POST `/webhooks`) and implement an HTTP endpoint at that URL that accepts Bookeo’s payloads. This sync script only **polls** the Bookeo API on a schedule; it does not start a web server or handle webhooks.
-
-## Security note
-
-- Do **not** commit `config.json` with real API keys to version control (it is in `.gitignore`).
-- On Azure VM, restrict file permissions and consider using Azure Key Vault or VM-managed identity for secrets in production.
-
-## Troubleshooting
-
-- **"Missing api_key or secret_key"**: Set them in `config.json` or in `BOOKEO_API_KEY` and `BOOKEO_SECRET_KEY` environment variables.
-- **Bookeo API error 401**: Check that `api_key` and `secret_key` are correct.
-- **Bookeo API error 429**: You are being rate-limited; add a delay between runs or reduce frequency.
-- **Empty Excel**: Verify the date range (e.g. `historical_start` and current date + `future_days`) contains bookings in your Bookeo account.
-
-## API reference
-
-- [Bookeo API – Bookings](https://www.bookeo.com/apiref/#tag/Bookings)
-- Base URL: `https://api.bookeo.com/v2`
-- Authentication: `apiKey` and `secretKey` as query parameters (or headers `X-Bookeo-apiKey`, `X-Bookeo-secretKey`).
+- Do not commit `.env` (already in `.gitignore`)
+- Store Bookeo and Azure credentials in environment variables or a secrets manager
+- Consider using Azure Key Vault for production
+- The firewall rule `AllowAzureServices` (0.0.0.0–0.0.0.0) enables Azure services only
