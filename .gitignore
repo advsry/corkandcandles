@@ -1,0 +1,7 @@
+config.json
+.env
+*.xlsx
+__pycache__/
+*.pyc
+.venv/
+venv/
