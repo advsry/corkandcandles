@@ -50,8 +50,8 @@ def load_config(path: str | Path | None = None) -> dict:
             config = json.load(f)
 
     # Env overrides (for Azure VM / production)
-    config["api_key"] = os.environ.get("apiKey") or config.get("api_key")
-    config["secret_key"] = os.environ.get("secretKey") or config.get("secret_key")
+    config["api_key"] = os.environ.get("apiKey") or config.get("apiKey")
+    config["secret_key"] = os.environ.get("secretKey") or config.get("secretKey")
     config["historical_start"] = (
         os.environ.get("BOOKEO_HISTORICAL_START")
         or config.get("historical_start")
