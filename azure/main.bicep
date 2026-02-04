@@ -26,7 +26,7 @@ resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' existing = {
   scope: resourceGroup(sqlServerResourceGroup)
 }
 
-resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-05-01-preview' = {
+resource sqlDatabase 'corkandcandles' = {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
