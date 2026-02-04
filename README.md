@@ -54,11 +54,11 @@ python scripts/load_bookeo_bookings.py --months 24
 
 ## Script options
 
-| Option        | Description                                                       |
-|---------------|-------------------------------------------------------------------|
-| `--months N`  | Number of months to fetch (default: 24)                           |
-| `--fetch-only`| Only call the Bookeo API, do not write to the database           |
-| `--output FILE` | Save API response as JSON instead of loading to database       |
+| Option          | Description                                              |
+| --------------- | -------------------------------------------------------- |
+| `--months N`    | Number of months to fetch (default: 24)                  |
+| `--fetch-only`  | Only call the Bookeo API, do not write to the database   |
+| `--output FILE` | Save API response as JSON instead of loading to database |
 
 ## Manual deployment
 
@@ -66,11 +66,11 @@ If you prefer not to use the deploy script:
 
 ```bash
 # Create resource group
-az group create --name corkandcandles-rg --location eastus
+az group create --name CandC_Franchisor --location eastus
 
 # Deploy Bicep (will prompt for sqlAdminPassword)
 az deployment group create \
-  --resource-group corkandcandles-rg \
+  --resource-group CandC_Franchisor \
   --template-file azure/main.bicep \
   --parameters baseName=corkandcandles sqlAdminLogin=sqladmin
 
