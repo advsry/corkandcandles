@@ -5,7 +5,7 @@
 param baseName string = 'corkandcandles'
 
 @description('Azure region')
-param location string = 'vnet-eastus-bastion'
+param location string = resourceGroup().location
 
 @description('SQL admin login')
 param sqlAdminLogin string

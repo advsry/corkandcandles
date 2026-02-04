@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 RESOURCE_GROUP="${RESOURCE_GROUP:-corkandcandles-rg}"
-LOCATION="${LOCATION:-vnet-eastus-bastion}"
+LOCATION="${LOCATION:-eastus}"
 BASE_NAME="${BASE_NAME:-corkandcandles}"
 SQL_ADMIN="${SQL_ADMIN:-sqladmin}"
 
