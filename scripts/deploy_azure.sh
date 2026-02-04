@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 RESOURCE_GROUP="${RESOURCE_GROUP:-corkandcandles-rg}"
-LOCATION="${LOCATION:-eastus}"
+LOCATION="${LOCATION:-vnet-eastus-bastion}"
 BASE_NAME="${BASE_NAME:-corkandcandles}"
 SQL_ADMIN="${SQL_ADMIN:-sqladmin}"
 
@@ -41,7 +41,7 @@ az deployment group create \
     --resource-group "$RESOURCE_GROUP" \
     --name "bookeo-db-deploy" \
     --template-file "$PROJECT_ROOT/azure/main.bicep" \
-    --parameters baseName="$BASE_NAME" sqlAdminLogin="$SQL_ADMIN" sqlAdminPassword="$SQL_PASSWORD" \
+    --parameters baseName="$BASE_NAME" location="$LOCATION" sqlAdminLogin="$SQL_ADMIN" sqlAdminPassword="$SQL_PASSWORD" \
     --output none
 
 # Get outputs
