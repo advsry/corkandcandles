@@ -1,11 +1,15 @@
 // Azure Bicep - Bookeo Bookings Database
-// Deploys: Resource Group, SQL Server, SQL Database, Firewall rule for Azure services
+// Uses existing SQL Server: corkandcandles.database.windows.net (West US 2)
+// Deploys: SQL Database + Firewall rule on existing server
 
-@description('Base name for resources')
-param baseName string = 'corkandcandles'
+@description('Existing SQL Server name')
+param sqlServerName string = 'corkandcandles'
 
-@description('Azure region')
-param location string = resourceGroup().location
+@description('Resource group containing the existing SQL Server (default: deployment target)')
+param sqlServerResourceGroup string = resourceGroup().name
+
+@description('Azure region (West US 2 for existing server)')
+param location string = 'westus2'
 
 @description('SQL admin login')
 param sqlAdminLogin string
@@ -14,21 +18,12 @@ param sqlAdminLogin string
 @description('SQL admin password')
 param sqlAdminPassword string
 
-@description('Number of months to fetch (from Jan 2026)')
-param monthsToFetch int = 24
+@description('Database name')
+param sqlDatabaseName string = 'corkandcandles-bookings'
 
-var sqlServerName = '${baseName}-sqlserver'
-var sqlDatabaseName = '${baseName}-bookings'
-
-resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' = {
+resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' existing = {
   name: sqlServerName
-  location: location
-  properties: {
-    administratorLogin: sqlAdminLogin
-    administratorLoginPassword: sqlAdminPassword
-    version: '12.0'
-    minimalTlsVersion: '1.2'
-  }
+  scope: resourceGroup(sqlServerResourceGroup)
 }
 
 resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-05-01-preview' = {
@@ -45,15 +40,9 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-05-01-preview' = {
   }
 }
 
-resource firewallRule 'Microsoft.Sql/servers/firewallRules@2023-05-01-preview' = {
-  parent: sqlServer
-  name: 'AllowAzureServices'
-  properties: {
-    startIpAddress: '0.0.0.0'
-    endIpAddress: '0.0.0.0'
-  }
-}
+// Firewall rule skipped - configure on existing server as needed
 
-output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
+var serverFqdn = '${sqlServerName}.database.windows.net'
+output sqlServerFqdn string = serverFqdn
 output sqlDatabaseName string = sqlDatabase.name
-output connectionString string = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+output connectionString string = 'Server=tcp:${serverFqdn},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'

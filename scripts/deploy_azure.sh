@@ -1,17 +1,21 @@
 #!/bin/bash
-# Deploy Azure SQL infrastructure and run schema + data load
+# Deploy Bookeo Bookings database to existing SQL Server (corkandcandles.database.windows.net, West US 2)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 RESOURCE_GROUP="${RESOURCE_GROUP:-CandC_Franchisor}"
-LOCATION="${LOCATION:-eastus}"
-BASE_NAME="${BASE_NAME:-corkandcandles}"
+LOCATION="${LOCATION:-westus2}"
+SQL_SERVER_NAME="${SQL_SERVER_NAME:-corkandcandles}"
+SQL_SERVER_FQDN="${SQL_SERVER_FQDN:-corkandcandles.database.windows.net}"
+SQL_SERVER_RG="${SQL_SERVER_RG:-$RESOURCE_GROUP}"
+SQL_DATABASE_NAME="${SQL_DATABASE_NAME:-corkandcandles-bookings}"
 SQL_ADMIN="${SQL_ADMIN:-sqladmin}"
 
-echo "=== Deploying Azure SQL for Bookeo Bookings ==="
-echo "Resource Group: $RESOURCE_GROUP"
-echo "Location: $LOCATION"
+echo "=== Deploying Bookeo Bookings to Existing SQL Server ==="
+echo "Resource Group: $SQL_SERVER_RG"
+echo "SQL Server: $SQL_SERVER_FQDN (West US 2)"
+echo "Database: $SQL_DATABASE_NAME"
 echo ""
 
 # Check Azure CLI
@@ -23,38 +27,34 @@ fi
 # Login if needed
 az account show &> /dev/null || az login
 
-# Create resource group
-echo "Creating resource group..."
-az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
+# Deploy to the resource group containing the SQL server
+echo "Deploying to resource group: $SQL_SERVER_RG"
+az group show --name "$SQL_SERVER_RG" --output none 2>/dev/null || { echo "Resource group $SQL_SERVER_RG not found. Ensure the SQL server exists there."; exit 1; }
 
 # Prompt for password
-read -sp "SQL admin password (min 8 chars, upper, lower, number, special): " SQL_PASSWORD
+read -sp "SQL admin password: " SQL_PASSWORD
 echo ""
 if [ ${#SQL_PASSWORD} -lt 8 ]; then
     echo "Password must be at least 8 characters"
     exit 1
 fi
 
-# Deploy Bicep
-echo "Deploying Bicep template..."
+# Deploy Bicep (database only - uses existing server)
+echo "Deploying database to existing SQL server..."
 az deployment group create \
-    --resource-group "$RESOURCE_GROUP" \
+    --resource-group "$SQL_SERVER_RG" \
     --name "bookeo-db-deploy" \
     --template-file "$PROJECT_ROOT/azure/main.bicep" \
-    --parameters baseName="$BASE_NAME" location="$LOCATION" sqlAdminLogin="$SQL_ADMIN" sqlAdminPassword="$SQL_PASSWORD" \
+    --parameters sqlServerName="$SQL_SERVER_NAME" sqlServerResourceGroup="$SQL_SERVER_RG" location="$LOCATION" sqlDatabaseName="$SQL_DATABASE_NAME" sqlAdminLogin="$SQL_ADMIN" sqlAdminPassword="$SQL_PASSWORD" \
     --output none
-
-# Get outputs
-SQL_SERVER=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name "bookeo-db-deploy" --query properties.outputs.sqlServerFqdn.value -o tsv)
-SQL_DB=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name "bookeo-db-deploy" --query properties.outputs.sqlDatabaseName.value -o tsv)
 
 echo ""
 echo "=== Adding firewall rule for your IP (for local script access) ==="
 MY_IP=$(curl -s -4 ifconfig.me 2>/dev/null || curl -s -4 icanhazip.com 2>/dev/null)
 echo "Your IP: $MY_IP"
 az sql server firewall-rule create \
-    --resource-group "$RESOURCE_GROUP" \
-    --server "${BASE_NAME}-sqlserver" \
+    --resource-group "$SQL_SERVER_RG" \
+    --server "$SQL_SERVER_NAME" \
     --name "ClientIP" \
     --start-ip-address "$MY_IP" \
     --end-ip-address "$MY_IP" \
@@ -62,18 +62,17 @@ az sql server firewall-rule create \
 
 echo ""
 echo "=== Running schema script ==="
-# Use sqlcmd if available, else print instructions
 if command -v sqlcmd &> /dev/null; then
-    sqlcmd -S "${BASE_NAME}-sqlserver.database.windows.net" -d "$SQL_DB" -U "$SQL_ADMIN" -P "$SQL_PASSWORD" -i "$PROJECT_ROOT/sql/schema.sql"
+    sqlcmd -S "$SQL_SERVER_FQDN" -d "$SQL_DATABASE_NAME" -U "$SQL_ADMIN" -P "$SQL_PASSWORD" -i "$PROJECT_ROOT/sql/schema.sql"
 else
     echo "sqlcmd not found. Run the schema manually:"
-    echo "  sqlcmd -S $SQL_SERVER -d $SQL_DB -U $SQL_ADMIN -P <password> -i $PROJECT_ROOT/sql/schema.sql"
+    echo "  sqlcmd -S $SQL_SERVER_FQDN -d $SQL_DATABASE_NAME -U $SQL_ADMIN -P <password> -i $PROJECT_ROOT/sql/schema.sql"
 fi
 
 echo ""
 echo "=== Done! Add to .env ==="
-echo "AZURE_SQL_SERVER=$SQL_SERVER"
-echo "AZURE_SQL_DATABASE=$SQL_DB"
+echo "AZURE_SQL_SERVER=$SQL_SERVER_FQDN"
+echo "AZURE_SQL_DATABASE=$SQL_DATABASE_NAME"
 echo "AZURE_SQL_USER=$SQL_ADMIN"
 echo "AZURE_SQL_PASSWORD=<your-password>"
 echo ""

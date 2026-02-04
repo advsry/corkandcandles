@@ -23,14 +23,14 @@ cp .env.example .env
 ./scripts/deploy_azure.sh
 ```
 
-Follow prompts to create the resource group, SQL server, and database. The script will output connection values for `.env`.
+Follow prompts to deploy the database to the existing SQL server (corkandcandles.database.windows.net, West US 2). The script will output connection values for `.env`.
 
 ### 2. Configure environment
 
 Add the Azure SQL connection details to `.env`:
 
 ```env
-AZURE_SQL_SERVER=your-server.database.windows.net
+AZURE_SQL_SERVER=corkandcandles.database.windows.net
 AZURE_SQL_DATABASE=corkandcandles-bookings
 AZURE_SQL_USER=sqladmin
 AZURE_SQL_PASSWORD=your_password
@@ -52,6 +52,8 @@ pip install -r requirements.txt
 python scripts/load_bookeo_bookings.py --months 24
 ```
 
+**Note:** If the existing SQL server is in a different resource group, set `SQL_SERVER_RG` before running the deploy script (e.g. `SQL_SERVER_RG=YourServerRG ./scripts/deploy_azure.sh`).
+
 ## Script options
 
 | Option          | Description                                              |
@@ -62,20 +64,17 @@ python scripts/load_bookeo_bookings.py --months 24
 
 ## Manual deployment
 
-If you prefer not to use the deploy script:
+If you prefer not to use the deploy script (uses existing SQL server corkandcandles.database.windows.net in West US 2):
 
 ```bash
-# Create resource group
-az group create --name CandC_Franchisor --location eastus
-
-# Deploy Bicep (will prompt for sqlAdminPassword)
+# Deploy database to existing server (ensure server exists in CandC_Franchisor)
 az deployment group create \
   --resource-group CandC_Franchisor \
   --template-file azure/main.bicep \
-  --parameters baseName=corkandcandles sqlAdminLogin=sqladmin
+  --parameters sqlServerName=corkandcandles sqlAdminLogin=sqladmin sqlAdminPassword=<password>
 
 # Run schema
-sqlcmd -S corkandcandles-sqlserver.database.windows.net -d corkandcandles-bookings \
+sqlcmd -S corkandcandles.database.windows.net -d corkandcandles-bookings \
   -U sqladmin -P <password> -i sql/schema.sql
 ```
 
@@ -83,7 +82,7 @@ sqlcmd -S corkandcandles-sqlserver.database.windows.net -d corkandcandles-bookin
 
 ```
 ├── azure/
-│   └── main.bicep          # Azure SQL Server + Database
+│   └── main.bicep          # Database on existing SQL Server
 ├── sql/
 │   └── schema.sql          # Bookings table schema
 ├── scripts/
