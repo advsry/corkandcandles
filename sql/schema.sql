@@ -41,3 +41,14 @@ ELSE
 BEGIN
     PRINT 'Table Bookings already exists.';
 END
+
+-- SyncState: tracks last sync time for incremental Bookeo sync
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SyncState')
+BEGIN
+    CREATE TABLE SyncState (
+        sync_key NVARCHAR(50) PRIMARY KEY,
+        last_sync_time DATETIMEOFFSET NOT NULL,
+        updated_at DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+    );
+    PRINT 'Table SyncState created successfully.';
+END

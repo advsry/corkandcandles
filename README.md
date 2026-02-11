@@ -1,6 +1,6 @@
 # Cork & Candles – Bookeo Bookings Azure Database
 
-Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database. Supports both manual batch loading and **real-time sync via webhooks** when new bookings are created or updated.
+Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database for each month starting January 1, 2026.
 
 ## Prerequisites
 
@@ -8,7 +8,6 @@ Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database. Supp
 - Python 3.10+
 - [ODBC Driver 18 for SQL Server](https://docs.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) (for pyodbc)
 - Bookeo API key and secret (from your Bookeo account)
-- [Azure Functions Core Tools](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local) (optional, for local webhook testing)
 
 ## Quick Start
 
@@ -49,36 +48,34 @@ pip install -r requirements.txt
 ### 4. Load bookings
 
 ```bash
-# Fetch all months starting Jan 2026 (default 24 months) and load to Azure SQL
+# Initial load: fetch all months starting Jan 2026 (default 24 months) and load to Azure SQL
 python scripts/load_bookeo_bookings.py --months 24
 ```
 
-### 5. Real-time sync (webhooks)
+### 5. Hourly sync (pull new bookings since last update)
 
-To update the database automatically when a new booking is created or updated in Bookeo:
+Run the incremental sync every hour to pull new bookings from Bookeo:
 
 ```bash
-# Deploy the webhook Function App (Linux, custom Docker image with ODBC)
-./scripts/deploy_webhook.sh
+# Manual run ( pull new bookings since last sync)
+python scripts/load_bookeo_bookings.py --incremental
 
-# Register the webhook with Bookeo (run once after deploy)
-python scripts/register_webhook.py https://corkandcandles-webhook.azurewebsites.net/api/bookeo
-
-# List existing webhooks
-python scripts/register_webhook.py --list
+# Schedule with cron (e.g. every hour at minute 0)
+# Add to crontab -e: 0 * * * * /path/to/corkandcandles/scripts/sync_hourly.sh >> /var/log/bookeo-sync.log 2>&1
 ```
 
-The webhook runs on a Linux Function App with a custom Docker image (includes ODBC Driver 18 for SQL Server). It verifies Bookeo signatures and upserts each booking to Azure SQL within 5 seconds.
+The `--incremental` mode fetches bookings from the last sync time through the next 90 days (Bookeo API limits 31 days per request, so it chunks automatically). The first run fetches the last 24 hours plus 90 days ahead.
 
 **Note:** If the existing SQL server is in a different resource group, set `SQL_SERVER_RG` before running the deploy script (e.g. `SQL_SERVER_RG=YourServerRG ./scripts/deploy_azure.sh`).
 
 ## Script options
 
-| Option          | Description                                              |
-| --------------- | -------------------------------------------------------- |
-| `--months N`    | Number of months to fetch (default: 24)                  |
-| `--fetch-only`  | Only call the Bookeo API, do not write to the database   |
-| `--output FILE` | Save API response as JSON instead of loading to database |
+| Option          | Description                                                              |
+| --------------- | ------------------------------------------------------------------------ |
+| `--months N`    | Number of months to fetch starting Jan 2026 (default: 24)                |
+| `--incremental` | Fetch only new bookings since last sync (for hourly runs)                |
+| `--fetch-only`  | Only call the Bookeo API, do not write to the database                   |
+| `--output FILE` | Save API response as JSON instead of loading to database                 |
 
 ## Manual deployment
 
@@ -100,21 +97,14 @@ sqlcmd -S corkandcandles.database.windows.net -d corkandcandles-bookings \
 
 ```
 ├── azure/
-│   ├── main.bicep          # Database on existing SQL Server
-│   └── function-app.bicep  # Webhook Function App
+│   └── main.bicep          # Database on existing SQL Server
 ├── sql/
 │   └── schema.sql          # Bookings table schema
 ├── scripts/
 │   ├── deploy_azure.sh     # One-click deploy
-│   ├── deploy_webhook.sh   # Deploy webhook Function App
 │   ├── load_bookeo_bookings.py
-│   ├── register_webhook.py  # Register webhook with Bookeo
+│   ├── sync_hourly.sh      # Cron wrapper for hourly sync
 │   └── booking_db.py       # Shared DB logic
-├── webhook/                # Azure Function (Bookeo webhook, Linux)
-│   ├── function_app.py
-│   ├── booking_db.py
-│   ├── Dockerfile          # Includes ODBC Driver 18
-│   └── requirements.txt
 ├── .env.example
 ├── requirements.txt
 └── README.md
@@ -130,6 +120,8 @@ The `Bookings` table stores:
 - Metadata: `creation_time`, `last_change_time`, `source_ip`
 - Pricing: `total_gross`, `total_net`, `total_paid`, `currency`
 - Raw JSON for full API response
+
+The `SyncState` table tracks the last sync time for incremental updates (`sync_key`, `last_sync_time`).
 
 ## Security notes
 

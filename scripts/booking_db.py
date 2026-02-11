@@ -1,8 +1,9 @@
 """
-Shared booking database logic for load script and webhook.
+Shared booking database logic for load script.
 """
 
 import json
+from datetime import datetime
 import os
 from typing import Any, Dict, List
 
@@ -65,6 +66,51 @@ def parse_booking_for_db(booking: Dict[str, Any]) -> Dict[str, Any]:
         "currency": currency,
         "raw_json": json.dumps(booking) if booking else None,
     }
+
+
+def create_sync_state_table_if_not_exists(conn) -> None:
+    """Create the SyncState table for tracking last sync time."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SyncState')
+        BEGIN
+            CREATE TABLE SyncState (
+                sync_key NVARCHAR(50) PRIMARY KEY,
+                last_sync_time DATETIMEOFFSET NOT NULL,
+                updated_at DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+            );
+        END
+    """)
+    conn.commit()
+    cursor.close()
+
+
+def get_last_sync_time(conn, sync_key: str = "bookeo_bookings") -> datetime | None:
+    """Get last sync time for the given key. Returns None if never synced."""
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT last_sync_time FROM SyncState WHERE sync_key = ?",
+        (sync_key,),
+    )
+    row = cursor.fetchone()
+    cursor.close()
+    return row[0] if row else None
+
+
+def set_last_sync_time(conn, sync_time: datetime, sync_key: str = "bookeo_bookings") -> None:
+    """Store last sync time."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        MERGE SyncState AS target
+        USING (SELECT ? AS sync_key, ? AS last_sync_time) AS source
+        ON target.sync_key = source.sync_key
+        WHEN MATCHED THEN
+            UPDATE SET last_sync_time = source.last_sync_time, updated_at = SYSDATETIMEOFFSET()
+        WHEN NOT MATCHED THEN
+            INSERT (sync_key, last_sync_time) VALUES (source.sync_key, source.last_sync_time);
+    """, (sync_key, sync_time))
+    conn.commit()
+    cursor.close()
 
 
 def create_bookings_table_if_not_exists(conn) -> None:

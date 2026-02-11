@@ -12,7 +12,6 @@ from pathlib import Path
 
 # Allow importing booking_db from same directory
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import sys
 import json
 import argparse
 from datetime import datetime, timedelta
@@ -37,6 +36,19 @@ AZURE_SQL_DATABASE = os.getenv("AZURE_SQL_DATABASE", "corkandcandles-bookings")
 AZURE_SQL_USER = os.getenv("AZURE_SQL_USER")
 AZURE_SQL_PASSWORD = os.getenv("AZURE_SQL_PASSWORD")
 AZURE_SQL_DRIVER = "{ODBC Driver 18 for SQL Server}"
+
+
+def get_date_ranges(
+    start: datetime,
+    end: datetime,
+    max_days: int = 31,
+) -> Generator[Tuple[datetime, datetime], None, None]:
+    """Generate (start, end) ranges of max_days length. Bookeo API limit is 31 days."""
+    current = start
+    while current < end:
+        chunk_end = min(current + timedelta(days=max_days), end)
+        yield current, chunk_end
+        current = chunk_end
 
 
 def get_month_ranges(start_year: int, start_month: int, num_months: int) -> Generator[Tuple[datetime, datetime], None, None]:
@@ -111,8 +123,11 @@ def fetch_bookings_for_range(
 
 from booking_db import (
     create_bookings_table_if_not_exists,
+    create_sync_state_table_if_not_exists,
     get_connection as get_db_connection,
+    get_last_sync_time,
     parse_booking_for_db,
+    set_last_sync_time,
     upsert_bookings_batch,
 )
 
@@ -126,6 +141,11 @@ def main():
         help="Number of months to fetch starting Jan 2026 (default: 24)",
     )
     parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Fetch only new/updated bookings since last sync (for hourly runs)",
+    )
+    parser.add_argument(
         "--fetch-only",
         action="store_true",
         help="Only fetch from API, don't load to database",
@@ -136,6 +156,10 @@ def main():
         help="Write fetched JSON to file instead of loading to DB",
     )
     args = parser.parse_args()
+
+    if args.incremental:
+        _run_incremental_sync(args)
+        return
 
     print(f"Fetching bookings for {args.months} months starting January 2026...")
     all_bookings = []
@@ -180,8 +204,63 @@ def main():
     rows = [parse_booking_for_db(b) for b in all_bookings]
     rows = [r for r in rows if r["booking_number"]]
     inserted = upsert_bookings_batch(conn, rows)
+    create_sync_state_table_if_not_exists(conn)
+    set_last_sync_time(conn, datetime.utcnow())
     conn.close()
-    print(f"\nUpserted {inserted} bookings to Azure SQL.")
+    print(f"\nUpserted {inserted} bookings to Azure SQL. Hourly sync will fetch from now.")
+
+
+def _run_incremental_sync(args) -> None:
+    """Fetch bookings since last sync. Designed for hourly cron/scheduler runs."""
+    if not all([AZURE_SQL_SERVER, AZURE_SQL_USER, AZURE_SQL_PASSWORD]):
+        print(
+            "Azure SQL credentials not set. Set AZURE_SQL_SERVER, AZURE_SQL_USER, AZURE_SQL_PASSWORD.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        import pyodbc  # noqa: F401
+    except ImportError:
+        print("Install pyodbc: pip install pyodbc", file=sys.stderr)
+        sys.exit(1)
+
+    conn = get_db_connection()
+    create_bookings_table_if_not_exists(conn)
+    create_sync_state_table_if_not_exists(conn)
+
+    now = datetime.utcnow()
+    last_sync = get_last_sync_time(conn)
+
+    # First run: fetch last 24h + next 90 days. Subsequent: fetch from last_sync to now+90d
+    if last_sync:
+        start_range = last_sync
+        print(f"Incremental sync: fetching since {start_range.isoformat()}...")
+    else:
+        start_range = now - timedelta(hours=24)
+        print(f"First incremental sync: fetching from {start_range.isoformat()}...")
+
+    end_range = now + timedelta(days=90)
+    all_bookings = []
+    for start, end in get_date_ranges(start_range, end_range, max_days=31):
+        label = f"{start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}"
+        print(f"  Range {label}:")
+        bookings = fetch_bookings_for_range(start, end)
+        all_bookings.extend(bookings)
+        print(f"    {len(bookings)} bookings")
+
+    print(f"\nTotal bookings fetched: {len(all_bookings)}")
+
+    if args.fetch_only:
+        conn.close()
+        return
+
+    rows = [parse_booking_for_db(b) for b in all_bookings]
+    rows = [r for r in rows if r["booking_number"]]
+    inserted = upsert_bookings_batch(conn, rows)
+    set_last_sync_time(conn, now)
+    conn.close()
+    print(f"Upserted {inserted} bookings. Next sync will fetch from {now.isoformat()}.")
 
 
 if __name__ == "__main__":
