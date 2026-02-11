@@ -8,6 +8,11 @@ API constraint: max 31 days per startTime/endTime range.
 
 import os
 import sys
+from pathlib import Path
+
+# Allow importing booking_db from same directory
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import sys
 import json
 import argparse
 from datetime import datetime, timedelta
@@ -104,137 +109,12 @@ def fetch_bookings_for_range(
     return all_bookings
 
 
-def parse_booking_for_db(booking: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract fields for database insert."""
-    participants = booking.get("participants", {})
-    numbers = participants.get("numbers", [])
-    total_participants = sum(n.get("number", 0) for n in numbers)
-
-    price = booking.get("price", {})
-    total_gross = price.get("totalGross", {}).get("amount")
-    total_net = price.get("totalNet", {}).get("amount")
-    total_paid = price.get("totalPaid", {}).get("amount")
-    currency = price.get("totalGross", {}).get("currency")
-
-    last_change = booking.get("lastChangeTime")
-
-    return {
-        "booking_number": booking.get("bookingNumber"),
-        "event_id": booking.get("eventId"),
-        "start_time": booking.get("startTime"),
-        "end_time": booking.get("endTime"),
-        "customer_id": booking.get("customerId"),
-        "title": booking.get("title"),
-        "product_name": booking.get("productName"),
-        "product_id": booking.get("productId"),
-        "canceled": 1 if booking.get("canceled") else 0,
-        "accepted": 1 if booking.get("accepted", True) else 0,
-        "no_show": 1 if booking.get("noShow") else 0,
-        "private_event": 1 if booking.get("privateEvent") else 0,
-        "source_ip": booking.get("sourceIp"),
-        "creation_time": booking.get("creationTime"),
-        "last_change_time": last_change,
-        "last_change_agent": booking.get("lastChangeAgent"),
-        "total_participants": total_participants,
-        "total_gross": str(total_gross) if total_gross is not None else None,
-        "total_net": str(total_net) if total_net is not None else None,
-        "total_paid": str(total_paid) if total_paid is not None else None,
-        "currency": currency,
-        "raw_json": json.dumps(booking) if booking else None,
-    }
-
-
-def create_bookings_table_if_not_exists(conn) -> None:
-    """Create the Bookings table in the database if it does not exist."""
-    cursor = conn.cursor()
-    cursor.execute("""
-        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Bookings')
-        BEGIN
-            CREATE TABLE Bookings (
-                booking_number NVARCHAR(50) PRIMARY KEY,
-                event_id NVARCHAR(100),
-                start_time DATETIMEOFFSET NOT NULL,
-                end_time DATETIMEOFFSET,
-                customer_id NVARCHAR(50),
-                title NVARCHAR(255),
-                product_name NVARCHAR(500),
-                product_id NVARCHAR(50),
-                canceled BIT NOT NULL DEFAULT 0,
-                accepted BIT NOT NULL DEFAULT 1,
-                no_show BIT NOT NULL DEFAULT 0,
-                private_event BIT NOT NULL DEFAULT 0,
-                source_ip NVARCHAR(45),
-                creation_time DATETIMEOFFSET,
-                last_change_time DATETIMEOFFSET,
-                last_change_agent NVARCHAR(255),
-                total_participants INT,
-                total_gross NVARCHAR(20),
-                total_net NVARCHAR(20),
-                total_paid NVARCHAR(20),
-                currency NVARCHAR(10),
-                raw_json NVARCHAR(MAX),
-                created_at DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET(),
-                updated_at DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
-            );
-            CREATE INDEX IX_Bookings_StartTime ON Bookings(start_time);
-            CREATE INDEX IX_Bookings_CustomerId ON Bookings(customer_id);
-            CREATE INDEX IX_Bookings_ProductId ON Bookings(product_id);
-            CREATE INDEX IX_Bookings_Canceled ON Bookings(canceled);
-        END
-    """)
-    conn.commit()
-    cursor.close()
-    print("Bookings table ready.")
-
-
-def upsert_to_azure_sql(rows: List[Dict[str, Any]], conn) -> int:
-    """Insert or update bookings in Azure SQL."""
-    if not rows:
-        return 0
-
-    cursor = conn.cursor()
-    update_sql = """
-    UPDATE Bookings SET
-        event_id=?, start_time=?, end_time=?, customer_id=?, title=?,
-        product_name=?, product_id=?, canceled=?, accepted=?, no_show=?,
-        private_event=?, source_ip=?, creation_time=?, last_change_time=?,
-        last_change_agent=?, total_participants=?, total_gross=?, total_net=?,
-        total_paid=?, currency=?, raw_json=?, updated_at=SYSDATETIMEOFFSET()
-    WHERE booking_number=?
-    """
-    insert_sql = """
-    INSERT INTO Bookings (booking_number, event_id, start_time, end_time, customer_id, title,
-            product_name, product_id, canceled, accepted, no_show, private_event,
-            source_ip, creation_time, last_change_time, last_change_agent,
-            total_participants, total_gross, total_net, total_paid, currency, raw_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """
-    count = 0
-    for r in rows:
-        params = (
-            r["event_id"], r["start_time"], r["end_time"], r["customer_id"], r["title"],
-            r["product_name"], r["product_id"], r["canceled"], r["accepted"], r["no_show"],
-            r["private_event"], r["source_ip"], r["creation_time"], r["last_change_time"],
-            r["last_change_agent"], r["total_participants"], r["total_gross"], r["total_net"],
-            r["total_paid"], r["currency"], r["raw_json"], r["booking_number"],
-        )
-        cursor.execute(update_sql, params)
-        if cursor.rowcount == 0:
-            cursor.execute(
-                insert_sql,
-                (
-                    r["booking_number"], r["event_id"], r["start_time"], r["end_time"],
-                    r["customer_id"], r["title"], r["product_name"], r["product_id"],
-                    r["canceled"], r["accepted"], r["no_show"], r["private_event"],
-                    r["source_ip"], r["creation_time"], r["last_change_time"], r["last_change_agent"],
-                    r["total_participants"], r["total_gross"], r["total_net"], r["total_paid"],
-                    r["currency"], r["raw_json"],
-                ),
-            )
-        count += 1
-    conn.commit()
-    cursor.close()
-    return count
+from booking_db import (
+    create_bookings_table_if_not_exists,
+    get_connection as get_db_connection,
+    parse_booking_for_db,
+    upsert_bookings_batch,
+)
 
 
 def main():
@@ -287,27 +167,19 @@ def main():
         sys.exit(1)
 
     try:
-        import pyodbc
+        import pyodbc  # noqa: F401
     except ImportError:
         print("Install pyodbc: pip install pyodbc", file=sys.stderr)
         sys.exit(1)
 
-    conn_str = (
-        f"Driver={AZURE_SQL_DRIVER};"
-        f"Server=tcp:{AZURE_SQL_SERVER},1433;"
-        f"Database={AZURE_SQL_DATABASE};"
-        f"Uid={AZURE_SQL_USER};"
-        f"Pwd={AZURE_SQL_PASSWORD};"
-        "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
-    )
-    conn = pyodbc.connect(conn_str)
+    conn = get_db_connection()
 
     print("Ensuring Bookings table exists...")
     create_bookings_table_if_not_exists(conn)
 
     rows = [parse_booking_for_db(b) for b in all_bookings]
     rows = [r for r in rows if r["booking_number"]]
-    inserted = upsert_to_azure_sql(rows, conn)
+    inserted = upsert_bookings_batch(conn, rows)
     conn.close()
     print(f"\nUpserted {inserted} bookings to Azure SQL.")
 

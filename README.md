@@ -1,6 +1,6 @@
 # Cork & Candles – Bookeo Bookings Azure Database
 
-Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database for each month starting January 1, 2026.
+Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database. Supports both manual batch loading and **real-time sync via webhooks** when new bookings are created or updated.
 
 ## Prerequisites
 
@@ -8,6 +8,7 @@ Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database for e
 - Python 3.10+
 - [ODBC Driver 18 for SQL Server](https://docs.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) (for pyodbc)
 - Bookeo API key and secret (from your Bookeo account)
+- [Azure Functions Core Tools](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local) (for webhook deploy)
 
 ## Quick Start
 
@@ -52,37 +53,32 @@ pip install -r requirements.txt
 python scripts/load_bookeo_bookings.py --months 24
 ```
 
-### 5. Export bookings to Excel
+### 5. Real-time sync (webhooks)
+
+To update the database automatically when a new booking is created or updated in Bookeo:
 
 ```bash
-# Export all bookings to Excel (default filename: bookings_export_YYYYMMDD_HHMMSS.xlsx)
-python scripts/export_bookings_to_excel.py
+# Deploy the webhook Function App (requires Azure Functions Core Tools)
+./scripts/deploy_webhook.sh
 
-# Custom output path
-python scripts/export_bookings_to_excel.py -o my_bookings.xlsx
+# Register the webhook with Bookeo (run once after deploy)
+python scripts/register_webhook.py https://corkandcandles-webhook.azurewebsites.net/api/bookeo
 
-# Exclude canceled bookings
-python scripts/export_bookings_to_excel.py --exclude-canceled
+# List existing webhooks
+python scripts/register_webhook.py --list
 ```
+
+The webhook verifies Bookeo signatures and upserts each booking to Azure SQL within 5 seconds.
 
 **Note:** If the existing SQL server is in a different resource group, set `SQL_SERVER_RG` before running the deploy script (e.g. `SQL_SERVER_RG=YourServerRG ./scripts/deploy_azure.sh`).
 
 ## Script options
-
-### load_bookeo_bookings.py
 
 | Option          | Description                                              |
 | --------------- | -------------------------------------------------------- |
 | `--months N`    | Number of months to fetch (default: 24)                  |
 | `--fetch-only`  | Only call the Bookeo API, do not write to the database   |
 | `--output FILE` | Save API response as JSON instead of loading to database |
-
-### export_bookings_to_excel.py
-
-| Option               | Description                                                    |
-| -------------------- | -------------------------------------------------------------- |
-| `-o`, `--output`     | Output Excel file path (default: bookings_export_YYYYMMDD_HHMMSS.xlsx) |
-| `--exclude-canceled` | Omit canceled bookings from the export                         |
 
 ## Manual deployment
 
@@ -104,13 +100,20 @@ sqlcmd -S corkandcandles.database.windows.net -d corkandcandles-bookings \
 
 ```
 ├── azure/
-│   └── main.bicep          # Database on existing SQL Server
+│   ├── main.bicep          # Database on existing SQL Server
+│   └── function-app.bicep  # Webhook Function App
 ├── sql/
 │   └── schema.sql          # Bookings table schema
 ├── scripts/
-│   ├── deploy_azure.sh           # One-click deploy
-│   ├── load_bookeo_bookings.py   # Fetch + load to SQL
-│   └── export_bookings_to_excel.py  # Export SQL bookings to Excel
+│   ├── deploy_azure.sh     # One-click deploy
+│   ├── deploy_webhook.sh   # Deploy webhook Function App
+│   ├── load_bookeo_bookings.py
+│   ├── register_webhook.py  # Register webhook with Bookeo
+│   └── booking_db.py       # Shared DB logic
+├── webhook/                # Azure Function (Bookeo webhook)
+│   ├── function_app.py
+│   ├── booking_db.py
+│   └── requirements.txt
 ├── .env.example
 ├── requirements.txt
 └── README.md
