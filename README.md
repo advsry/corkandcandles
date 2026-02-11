@@ -8,7 +8,7 @@ Loads [Bookeo](https://www.bookeo.com) bookings into an Azure SQL Database. Supp
 - Python 3.10+
 - [ODBC Driver 18 for SQL Server](https://docs.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) (for pyodbc)
 - Bookeo API key and secret (from your Bookeo account)
-- [Azure Functions Core Tools](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local) (for webhook deploy)
+- [Azure Functions Core Tools](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local) (optional, for local webhook testing)
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ python scripts/load_bookeo_bookings.py --months 24
 To update the database automatically when a new booking is created or updated in Bookeo:
 
 ```bash
-# Deploy the webhook Function App (requires Azure Functions Core Tools)
+# Deploy the webhook Function App (Linux, custom Docker image with ODBC)
 ./scripts/deploy_webhook.sh
 
 # Register the webhook with Bookeo (run once after deploy)
@@ -68,7 +68,7 @@ python scripts/register_webhook.py https://corkandcandles-webhook.azurewebsites.
 python scripts/register_webhook.py --list
 ```
 
-The webhook verifies Bookeo signatures and upserts each booking to Azure SQL within 5 seconds.
+The webhook runs on a Linux Function App with a custom Docker image (includes ODBC Driver 18 for SQL Server). It verifies Bookeo signatures and upserts each booking to Azure SQL within 5 seconds.
 
 **Note:** If the existing SQL server is in a different resource group, set `SQL_SERVER_RG` before running the deploy script (e.g. `SQL_SERVER_RG=YourServerRG ./scripts/deploy_azure.sh`).
 
@@ -110,9 +110,10 @@ sqlcmd -S corkandcandles.database.windows.net -d corkandcandles-bookings \
 │   ├── load_bookeo_bookings.py
 │   ├── register_webhook.py  # Register webhook with Bookeo
 │   └── booking_db.py       # Shared DB logic
-├── webhook/                # Azure Function (Bookeo webhook)
+├── webhook/                # Azure Function (Bookeo webhook, Linux)
 │   ├── function_app.py
 │   ├── booking_db.py
+│   ├── Dockerfile          # Includes ODBC Driver 18
 │   └── requirements.txt
 ├── .env.example
 ├── requirements.txt

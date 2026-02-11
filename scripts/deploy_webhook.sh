@@ -1,6 +1,6 @@
 #!/bin/bash
-# Deploy Bookeo webhook Function App to Azure
-# Prerequisites: Azure CLI, func (Azure Functions Core Tools), database already deployed
+# Deploy Bookeo webhook Function App to Azure (Linux with custom Docker image)
+# Prerequisites: Azure CLI, database already deployed
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,8 +10,10 @@ LOCATION="${LOCATION:-westus2}"
 BASE_NAME="${BASE_NAME:-corkandcandles}"
 SQL_SERVER_FQDN="${SQL_SERVER_FQDN:-corkandcandles.database.windows.net}"
 SQL_DATABASE_NAME="${SQL_DATABASE_NAME:-corkandcandles-bookings}"
+# ACR name must match Bicep: take(replace(baseName,'-','') + 'acr', 24)
+ACR_NAME="${ACR_NAME:-$(echo "$BASE_NAME" | tr -d '-')acr}"
 
-echo "=== Deploying Bookeo Webhook Function App ==="
+echo "=== Deploying Bookeo Webhook Function App (Linux) ==="
 echo "Resource Group: $RESOURCE_GROUP"
 echo "Function App: ${BASE_NAME}-webhook"
 echo ""
@@ -19,12 +21,6 @@ echo ""
 # Check Azure CLI
 if ! command -v az &> /dev/null; then
     echo "Azure CLI not found. Install: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
-    exit 1
-fi
-
-# Check Function Core Tools
-if ! command -v func &> /dev/null; then
-    echo "Azure Functions Core Tools not found. Install: https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local"
     exit 1
 fi
 
@@ -50,7 +46,7 @@ SQL_ADMIN="${AZURE_SQL_USER:-sqladmin}"
 # Webhook URL (known after deploy; we use expected hostname)
 WEBHOOK_URL="https://${BASE_NAME}-webhook.azurewebsites.net/api/bookeo"
 
-echo "Deploying Function App infrastructure..."
+echo "Deploying Function App infrastructure (ACR, Linux Function App)..."
 az deployment group create \
     --resource-group "$RESOURCE_GROUP" \
     --name "bookeo-webhook-deploy" \
@@ -66,9 +62,13 @@ az deployment group create \
     --output none
 
 echo ""
-echo "Deploying function code..."
+echo "Building and pushing Docker image to ACR..."
 cd "$PROJECT_ROOT/webhook"
-func azure functionapp publish "${BASE_NAME}-webhook" --python
+az acr build --registry "$ACR_NAME" --image webhook:latest .
+
+echo ""
+echo "Restarting Function App to pull new image..."
+az functionapp restart --resource-group "$RESOURCE_GROUP" --name "${BASE_NAME}-webhook"
 
 echo ""
 echo "=== Webhook deployed! ==="

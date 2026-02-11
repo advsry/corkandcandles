@@ -1,6 +1,6 @@
-// Azure Bicep - Bookeo Webhook Function App
-// Deploys: Storage Account, Linux Consumption Function App
-// Run after main.bicep; then deploy code with: func azure functionapp publish <name>
+// Azure Bicep - Bookeo Webhook Function App (Linux)
+// Deploys: ACR, Storage Account, Linux Function App with custom Docker image
+// Run after main.bicep; build/push image and deploy with: ./scripts/deploy_webhook.sh
 
 @description('Base name for resources')
 param baseName string = 'corkandcandles'
@@ -30,13 +30,29 @@ param webhookUrl string
 
 var storageAccountName = '${replace(baseName, '-', '')}webhook'
 var functionAppName = '${baseName}-webhook'
+var acrName = take('${replace(baseName, '-', '')}acr', 24)
+
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
+  name: acrName
+  location: location
+  sku: {
+    name: 'Basic'
+  }
+  properties: {
+    adminUserEnabled: true
+  }
+}
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2022-03-01' = {
   name: '${functionAppName}-plan'
   location: location
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'B1'
+    tier: 'Basic'
+  }
+  kind: 'linux'
+  properties: {
+    reserved: true
   }
 }
 
@@ -52,14 +68,16 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 resource functionApp 'Microsoft.Web/sites@2022-03-01' = {
   name: functionAppName
   location: location
-  kind: 'functionapp'
+  kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
   }
   properties: {
+    reserved: true
     httpsOnly: true
     serverFarmId: appServicePlan.id
     siteConfig: {
+      linuxFxVersion: 'DOCKER|${acr.properties.loginServer}/webhook:latest'
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
@@ -105,10 +123,23 @@ resource functionApp 'Microsoft.Web/sites@2022-03-01' = {
           name: 'BOOKEO_WEBHOOK_URL'
           value: webhookUrl
         }
+        {
+          name: 'DOCKER_REGISTRY_SERVER_URL'
+          value: 'https://${acr.properties.loginServer}'
+        }
+        {
+          name: 'DOCKER_REGISTRY_SERVER_USERNAME'
+          value: acr.listCredentials().username
+        }
+        {
+          name: 'DOCKER_REGISTRY_SERVER_PASSWORD'
+          value: acr.listCredentials().passwords[0].value
+        }
       ]
     }
   }
 }
 
 output functionAppName string = functionApp.name
+output acrLoginServer string = acr.properties.loginServer
 output webhookUrl string = 'https://${functionApp.properties.defaultHostName}/api/bookeo'
