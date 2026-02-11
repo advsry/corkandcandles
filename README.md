@@ -52,15 +52,37 @@ pip install -r requirements.txt
 python scripts/load_bookeo_bookings.py --months 24
 ```
 
+### 5. Export bookings to Excel
+
+```bash
+# Export all bookings to Excel (default filename: bookings_export_YYYYMMDD_HHMMSS.xlsx)
+python scripts/export_bookings_to_excel.py
+
+# Custom output path
+python scripts/export_bookings_to_excel.py -o my_bookings.xlsx
+
+# Exclude canceled bookings
+python scripts/export_bookings_to_excel.py --exclude-canceled
+```
+
 **Note:** If the existing SQL server is in a different resource group, set `SQL_SERVER_RG` before running the deploy script (e.g. `SQL_SERVER_RG=YourServerRG ./scripts/deploy_azure.sh`).
 
 ## Script options
+
+### load_bookeo_bookings.py
 
 | Option          | Description                                              |
 | --------------- | -------------------------------------------------------- |
 | `--months N`    | Number of months to fetch (default: 24)                  |
 | `--fetch-only`  | Only call the Bookeo API, do not write to the database   |
 | `--output FILE` | Save API response as JSON instead of loading to database |
+
+### export_bookings_to_excel.py
+
+| Option               | Description                                                    |
+| -------------------- | -------------------------------------------------------------- |
+| `-o`, `--output`     | Output Excel file path (default: bookings_export_YYYYMMDD_HHMMSS.xlsx) |
+| `--exclude-canceled` | Omit canceled bookings from the export                         |
 
 ## Manual deployment
 
@@ -86,8 +108,9 @@ sqlcmd -S corkandcandles.database.windows.net -d corkandcandles-bookings \
 ├── sql/
 │   └── schema.sql          # Bookings table schema
 ├── scripts/
-│   ├── deploy_azure.sh     # One-click deploy
-│   └── load_bookeo_bookings.py  # Fetch + load script
+│   ├── deploy_azure.sh           # One-click deploy
+│   ├── load_bookeo_bookings.py   # Fetch + load to SQL
+│   └── export_bookings_to_excel.py  # Export SQL bookings to Excel
 ├── .env.example
 ├── requirements.txt
 └── README.md
