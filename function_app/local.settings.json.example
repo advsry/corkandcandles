@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "BOOKEO_API_KEY": "your_bookeo_api_key",
+    "BOOKEO_SECRET_KEY": "your_bookeo_secret_key",
+    "AZURE_SQL_SERVER": "corkandcandles.database.windows.net",
+    "AZURE_SQL_DATABASE": "cc-bookings",
+    "AZURE_SQL_USER": "CloudSA1bc4d920",
+    "AZURE_SQL_PASSWORD": "your_password",
+    "WEBHOOK_BASE_URL": "https://your-function-app.azurewebsites.net"
+  }
+}
