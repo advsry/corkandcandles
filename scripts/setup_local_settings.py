@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Generate local.settings.json from parent .env for local development.
-Run from function_app directory: python scripts/setup_local_settings.py
+Run from project root: python scripts/setup_local_settings.py
 """
 import json
 import os
 
 def load_env():
-    env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
     env = {}
     if os.path.exists(env_path):
         with open(env_path) as f:

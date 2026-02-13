@@ -4,7 +4,7 @@ Register the Bookeo webhook for new booking notifications.
 Run this AFTER deploying the Azure Function App to get your webhook URL.
 
 Usage:
-    python register_webhook.py --url "https://YOUR-APP.azurewebsites.net/api/bookeo-webhook"
+    python register_webhook.py --url "https://corkandcandles-sync.azurewebsites.net/api/bookeo-webhook"
 """
 import argparse
 import os
@@ -54,7 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description="Register Bookeo webhook")
     parser.add_argument(
         "--url",
-        help="Full webhook URL (e.g. https://xxx.azurewebsites.net/api/bookeo-webhook)",
+        help="Full webhook URL (e.g. https://corkandcandles-sync.azurewebsites.net/api/bookeo-webhook)",
     )
     parser.add_argument("--list", action="store_true", help="List existing webhooks")
     parser.add_argument("--domain", default="bookings", help="Webhook domain (default: bookings)")

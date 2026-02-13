@@ -27,7 +27,6 @@ Python-based Azure Function App that syncs bookings from the Bookeo API (Cork an
 3. Install dependencies:
 
    ```bash
-   cd function_app
    pip install -r requirements.txt
    ```
 
@@ -99,7 +98,6 @@ Configure these in the Function App → Configuration → Application settings:
 After deploying, register the webhook with Bookeo:
 
 ```bash
-cd function_app
 export BOOKEO_API_KEY="..."
 export BOOKEO_SECRET_KEY="..."
 
