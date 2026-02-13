@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Local config (never bake secrets into image)
+.env
+local.settings.json
+local.settings.json.example
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Docs / misc
+README.md
+*.md

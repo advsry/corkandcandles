@@ -56,12 +56,20 @@ func azure functionapp publish corkandcandles-sync
 
 ### Option B: Custom Docker image (recommended – includes ODBC driver for Azure SQL)
 
+Uses Docker buildx for BuildKit-backed builds (better caching, multi-platform support).
+
 ```bash
-# Build and push to Azure Container Registry
+# Build and push to Azure Container Registry (via buildx)
 az acr create --resource-group <your-rg> --name corkandcandlesacr --sku Basic
 az acr login --name corkandcandlesacr
-docker build -t corkandcandlesacr.azurecr.io/bookeo-sync:v1 .
-docker push corkandcandlesacr.azurecr.io/bookeo-sync:v1
+
+# Ensure buildx is available (default in Docker Desktop)
+docker buildx build --platform linux/amd64 \
+  -t corkandcandlesacr.azurecr.io/bookeo-sync:v1 \
+  --push .
+
+# Or use the convenience script:
+# ./scripts/build.sh v1
 
 # Create Function App from container
 az functionapp create \
