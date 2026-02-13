@@ -96,7 +96,7 @@ def fetch_bookings_for_range(
         url = f"{BOOKEO_BASE_URL}?{urlencode(params)}"
 
         try:
-            resp = requests.get(url, timeout=30)
+            resp = requests.get(url, timeout=3000)
             resp.raise_for_status()
             data = resp.json()
         except requests.RequestException as e:

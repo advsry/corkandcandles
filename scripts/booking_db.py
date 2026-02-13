@@ -25,7 +25,7 @@ def get_connection():
         f"Database={AZURE_SQL_DATABASE};"
         f"Uid={AZURE_SQL_USER};"
         f"Pwd={AZURE_SQL_PASSWORD};"
-        "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=3000;"
     )
     return pyodbc.connect(conn_str)
 

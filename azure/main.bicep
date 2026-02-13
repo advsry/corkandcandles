@@ -45,4 +45,4 @@ resource sqlDatabase 'corkandcandles' = {
 var serverFqdn = '${sqlServerName}.database.windows.net'
 output sqlServerFqdn string = serverFqdn
 output sqlDatabaseName string = sqlDatabase.name
-output connectionString string = 'Server=tcp:${serverFqdn},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+output connectionString string = 'Server=tcp:${serverFqdn},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;Connection Timeout=3000;'
