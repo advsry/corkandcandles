@@ -23,15 +23,15 @@ except ImportError:
     from shared.bookeo_client import get_auth_headers
 
 
-def register_webhook(webhook_url: str) -> dict:
-    """Register webhook with Bookeo for domain=bookings, type=created."""
+def register_webhook(webhook_url: str, domain: str = "bookings", event_type: str = "created") -> dict:
+    """Register webhook with Bookeo. Default: domain=bookings, type=created."""
     resp = requests.post(
         "https://api.bookeo.com/v2/webhooks",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json={
             "url": webhook_url,
-            "domain": "bookings",
-            "type": "created",
+            "domain": domain,
+            "type": event_type,
         },
         timeout=30,
     )
@@ -54,10 +54,13 @@ def main():
     parser = argparse.ArgumentParser(description="Register Bookeo webhook")
     parser.add_argument(
         "--url",
-        required=True,
         help="Full webhook URL (e.g. https://xxx.azurewebsites.net/api/bookeo-webhook)",
     )
     parser.add_argument("--list", action="store_true", help="List existing webhooks")
+    parser.add_argument("--domain", default="bookings", help="Webhook domain (default: bookings)")
+    parser.add_argument("--type", dest="event_type", default="created",
+                        choices=["created", "updated", "deleted"],
+                        help="Event type (default: created)")
     args = parser.parse_args()
 
     if args.list:
@@ -65,13 +68,17 @@ def main():
         print("Existing webhooks:", data)
         return
 
+    if not args.url:
+        parser.error("--url is required for registration")
+
     if not args.url.startswith("https://"):
         print("Error: Webhook URL must use HTTPS")
         sys.exit(1)
 
-    result = register_webhook(args.url.rstrip("/"))
+    url = args.url.rstrip("/")
+    result = register_webhook(url, domain=args.domain, event_type=args.event_type)
     print("Webhook registered successfully:", result)
-    print("\nSet BOOKEO_WEBHOOK_URL in your Function App settings to:", args.url)
+    print("\nSet BOOKEO_WEBHOOK_URL in your Function App settings to:", url)
 
 
 if __name__ == "__main__":

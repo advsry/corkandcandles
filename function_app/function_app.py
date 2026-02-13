@@ -4,11 +4,10 @@ Azure Function App with webhook trigger for new bookings.
 """
 import logging
 import os
-from datetime import datetime, timedelta
 
 import azure.functions as func
 
-from shared.bookeo_client import fetch_bookings_by_date_range, fetch_bookings
+from shared.bookeo_client import fetch_bookings_by_date_range
 from shared.sql_client import sync_bookings_to_sql
 from shared.webhook_auth import verify_bookeo_signature
 
